@@ -2,6 +2,8 @@ import csv
 import os
 import re
 import sqlite3
+import threading
+from bot_detection import reverse_dns_check, is_cloud_ip, load_cloud_ranges
 from datetime import datetime
 
 from flask import Flask, g, jsonify, render_template, request, send_file
@@ -10,7 +12,7 @@ app = Flask(__name__)
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "visitors.db")
 
 # ---------------------------------------------------------------------------
-# Known bot User-Agent patterns
+# Known bot User-Agent patterns 
 # ---------------------------------------------------------------------------
 BOT_UA_PATTERNS = [
     r"googlebot", r"google-safety", r"safebrowsing", r"google-read-aloud",
@@ -81,40 +83,64 @@ def init_db():
 # Bot detection
 # ---------------------------------------------------------------------------
 
-def ua_is_bot(ua: str):
-    lower = ua.lower()
-    for p in BOT_UA_PATTERNS:
-        if re.search(p, lower):
-            return True, f"UA match: {p}"
-    return False, ""
-
-
-def detect_bot(row: dict):
-    # 1. User-Agent
-    is_bot, reason = ua_is_bot(row.get("user_agent", ""))
+def detect_bot_early(ip: str, ua: str) -> tuple[bool, str]:
+    """
+    Détection au moment du GET / — on n'a que l'IP et le UA.
+    1. Reverse DNS (méthode fiable pour Googlebot, etc..)
+    2. Cloud IP range (AWS, GCP, Azure)
+    3. UA évidents (curl, wget, scrapy..)
+    """
+    # 1. Reverse DNS
+    is_bot, reason = reverse_dns_check(ip)
     if is_bot:
         return True, reason
 
-    # 2. No JS at all
+    # 2. Cloud IP range
+    is_bot, reason = is_cloud_ip(ip)
+    if is_bot:
+        return True, reason
+
+    # 3. UA évidents seulement
+    lower = ua.lower()
+    for p in BOT_UA_PATTERNS:
+        if re.search(p, lower):
+            return True, f"obvious bot UA: {p}"
+
+    return False, ""
+
+
+def detect_bot_full(row: dict) -> tuple[bool, str]:
+    """
+    Détection complète au moment du POST /api/collect — on a le fingerprint JS.
+    """
+    ip = row.get("ip", "")
+    ua = row.get("user_agent", "")
+
+    # 1. Reverse DNS + cloud IP (re-check avec les mêmes données)
+    is_bot, reason = detect_bot_early(ip, ua)
+    if is_bot:
+        return True, reason
+
+    # 2. JS non exécuté
     if not row.get("js_enabled"):
         return True, "no JS executed"
 
-    # 3. No WebGL = no GPU
+    # 3. Pas de WebGL
     if not row.get("webgl_supported"):
         return True, "no WebGL / no GPU"
 
-    # 4. Virtual or software GPU
+    # 4. GPU virtuel ou software
     renderer = (row.get("webgl_renderer") or "").lower()
     for hint in VIRTUAL_GPU:
         if hint in renderer:
             return True, f"virtual GPU: {hint}"
 
-    # 5. JS too fast = headless
+    # 5. JS trop rapide = headless
     t = row.get("js_exec_time_ms")
-    if isinstance(t, (int, float)) and t < 5:
+    if isinstance(t, (int, float)) and 0 < t < 5:
         return True, f"JS exec too fast ({t}ms)"
 
-    # 6. No CPU cores reported
+    # 6. hw_concurrency = 0
     if row.get("hw_concurrency") == 0:
         return True, "hw_concurrency=0"
 
@@ -136,7 +162,8 @@ def index():
     tls_cipher = request.environ.get("SSL_CIPHER", "")
     ts = datetime.utcnow().isoformat()
 
-    is_bot, bot_reason = ua_is_bot(ua)
+    # Détection précoce — uniquement IP + UA (pas encore de JS)
+    is_bot, bot_reason = detect_bot_early(ip, ua)
 
     db = get_db()
     cur = db.execute("""
@@ -156,7 +183,13 @@ def collect():
     if not visitor_id:
         return jsonify({"error": "missing visitor_id"}), 400
 
+    # Récupère l'IP depuis la DB (enregistrée au GET)
+    db = get_db()
+    existing = db.execute("SELECT ip FROM visitors WHERE id = ?", (visitor_id,)).fetchone()
+    ip = existing["ip"] if existing else request.headers.get("X-Forwarded-For", request.remote_addr)
+
     row = {
+        "ip":               ip,
         "user_agent":       request.headers.get("User-Agent", ""),
         "js_enabled":       1,
         "fp_id":            data.get("fp_id", ""),
@@ -175,9 +208,8 @@ def collect():
         "js_exec_time_ms":  data.get("js_exec_time_ms", 0),
     }
 
-    is_bot, bot_reason = detect_bot(row)
+    is_bot, bot_reason = detect_bot_full(row)
 
-    db = get_db()
     db.execute("""
         UPDATE visitors SET
             js_enabled       = 1,
@@ -254,6 +286,7 @@ def export_csv():
 # ---------------------------------------------------------------------------
 
 init_db()
+threading.Thread(target=load_cloud_ranges, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
