@@ -30,4 +30,5 @@ services:
       - "traefik.http.routers.flask.rule=Host(`localhost`)"
       - "traefik.http.routers.flask.entrypoints=web"
       - "traefik.http.services.flask.loadbalancer.server.port=5000"
+      - "traefik.http.middlewares.flask-headers.headers.customrequestheaders.X-Forwarded-For=true"
     restart: unless-stopped

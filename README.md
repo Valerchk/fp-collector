@@ -1,4 +1,4 @@
-# gottaphish — phishing awareness fingerprint collector
+# gottaphish - fingerprint collector
 
 ## Project structure
 
@@ -7,7 +7,7 @@ gottaphish/
 ├── app/
 │   ├── app.py
 │   ├── requirements.txt
-│   ├── data/               ← SQLite DB + CSV export (auto-created)
+│   ├── data/               <- SQLite DB + CSV export
 │   └── templates/
 │       └── index.html
 ├── docker-compose.yml

@@ -112,7 +112,7 @@
   // ── FingerprintJS v4 from CDN ─────────────────────────────────
   // Source: https://github.com/fingerprintjs/fingerprintjs
   const script = document.createElement("script");
-  script.src = "https://openfpcdn.io/fingerprintjs/v4";
+  script.src = "https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.umd.min.js";
   script.onload = async function () {
     const fp     = await FingerprintJS.load();
     const result = await fp.get();
