@@ -1,0 +1,8 @@
+app/data/
+__pycache__/
+*.pyc
+*.db
+*.csv
+.env
+
+infra.png

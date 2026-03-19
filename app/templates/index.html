@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Secure Login</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5f5f4;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e2e2e0;
+      border-radius: 12px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 2px 16px rgba(0,0,0,.07);
+    }
+    h1 { font-size: 21px; font-weight: 600; margin-bottom: 6px; color: #1a1a1a; }
+    .sub { font-size: 14px; color: #888; margin-bottom: 28px; }
+    label { display: block; font-size: 13px; font-weight: 500; color: #444; margin-bottom: 5px; }
+    input {
+      width: 100%; padding: 10px 13px;
+      border: 1px solid #d5d5d3; border-radius: 8px;
+      font-size: 15px; outline: none; margin-bottom: 16px;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: #4f7cff; }
+    button {
+      width: 100%; padding: 11px;
+      background: #4f7cff; color: #fff;
+      border: none; border-radius: 8px;
+      font-size: 15px; font-weight: 500;
+      cursor: pointer; transition: background .15s;
+    }
+    button:hover { background: #3a63e0; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Sign in</h1>
+  <p class="sub">Enter your credentials to continue.</p>
+  <label>Email</label>
+  <input type="email" placeholder="you@example.com" autocomplete="email"/>
+  <label>Password</label>
+  <input type="password" placeholder="••••••••" autocomplete="current-password"/>
+  <button type="button">Continue</button>
+</div>
+
+<!-- FingerprintJS v4 (open-source, GitHub: fingerprintjs/fingerprintjs) -->
+<script>
+(function () {
+  const VISITOR_ID  = {{ visitor_id }};
+  const COLLECT_URL = "/gottaphish/test1/api/collect";
+  const t0 = Date.now();
+
+  // ── WebGL GPU info ────────────────────────────────────────────
+  function getWebGL() {
+    try {
+      const c  = document.createElement("canvas");
+      const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+      if (!gl) return { supported: false };
+      const ext = gl.getExtension("WEBGL_debug_renderer_info");
+      return {
+        supported: true,
+        vendor:    ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL)   : "",
+        renderer:  ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "",
+      };
+    } catch { return { supported: false }; }
+  }
+
+  // ── WebGPU GPU info (modern browsers) ────────────────────────
+  async function getWebGPU() {
+    try {
+      if (!navigator.gpu) return { supported: false };
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) return { supported: false };
+      const info = await adapter.requestAdapterInfo();
+      return { supported: true, vendor: info.vendor || "", device: info.device || "" };
+    } catch { return { supported: false }; }
+  }
+
+  // ── Canvas fingerprint hash ───────────────────────────────────
+  function getCanvasHash() {
+    try {
+      const c   = document.createElement("canvas");
+      const ctx = c.getContext("2d");
+      ctx.textBaseline = "top";
+      ctx.font = "14px Arial";
+      ctx.fillStyle = "#f00";
+      ctx.fillRect(0, 0, 60, 20);
+      ctx.fillStyle = "#00f";
+      ctx.fillText("fp", 2, 2);
+      // Simple hash of the data URL
+      const raw = c.toDataURL();
+      let h = 0;
+      for (let i = 0; i < raw.length; i++) {
+        h = (Math.imul(31, h) + raw.charCodeAt(i)) | 0;
+      }
+      return (h >>> 0).toString(16);
+    } catch { return ""; }
+  }
+
+  // ── FingerprintJS v4 from CDN ─────────────────────────────────
+  // Source: https://github.com/fingerprintjs/fingerprintjs
+  const script = document.createElement("script");
+  script.src = "https://openfpcdn.io/fingerprintjs/v4";
+  script.onload = async function () {
+    const fp     = await FingerprintJS.load();
+    const result = await fp.get();
+
+    const webgl  = getWebGL();
+    const webgpu = await getWebGPU();
+
+    const payload = {
+      visitor_id:       VISITOR_ID,
+      fp_id:            result.visitorId,
+      canvas_hash:      getCanvasHash(),
+      webgl_supported:  webgl.supported,
+      webgl_vendor:     webgl.vendor  || "",
+      webgl_renderer:   webgl.renderer || "",
+      webgpu_supported: webgpu.supported,
+      webgpu_vendor:    webgpu.vendor  || "",
+      webgpu_device:    webgpu.device  || "",
+      screen:           screen.width + "x" + screen.height + "x" + screen.colorDepth,
+      timezone:         Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      language:         navigator.language || "",
+      platform:         navigator.platform || "",
+      hw_concurrency:   navigator.hardwareConcurrency || 0,
+      device_memory:    navigator.deviceMemory || 0,
+      plugins_count:    navigator.plugins ? navigator.plugins.length : 0,
+      js_exec_time_ms:  Date.now() - t0,
+    };
+
+    fetch(COLLECT_URL, {
+      method:    "POST",
+      headers:   { "Content-Type": "application/json" },
+      body:      JSON.stringify(payload),
+      keepalive: true,
+    }).catch(function () {});
+  };
+
+  // Silent fail if CDN blocked (bot environment)
+  script.onerror = function () {
+    fetch(COLLECT_URL, {
+      method:    "POST",
+      headers:   { "Content-Type": "application/json" },
+      body:      JSON.stringify({ visitor_id: VISITOR_ID, js_exec_time_ms: Date.now() - t0 }),
+      keepalive: true,
+    }).catch(function () {});
+  };
+
+  document.head.appendChild(script);
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  flask:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./app:/app
+    command: >
+      bash -c "pip install -r requirements.txt -q &&
+               python -c 'from app import init_db; init_db()' &&
+               python app.py"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flask.rule=Host(`localhost`)"
+      - "traefik.http.routers.flask.entrypoints=web"
+      - "traefik.http.services.flask.loadbalancer.server.port=5000"
+    restart: unless-stopped
