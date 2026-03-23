@@ -1,0 +1,8 @@
+# acquis.yml — says to CrowdSec which logs to analyze
+# check the logs Traefik through Docker
+
+source: docker
+container_name:
+  - gottaphish-traefik-1   # name of the Traefik container
+labels:
+  type: traefik

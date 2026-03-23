@@ -2,6 +2,7 @@ version: "3.8"
 
 services:
 
+  # TRAEFIK — reverse proxy
   traefik:
     image: traefik:v3.0
     command:
@@ -9,15 +10,38 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      # Active le plugin CrowdSec bouncer
+      - "--experimental.plugins.bouncer.moduleName=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
+      - "--experimental.plugins.bouncer.version=v1.3.5"
+      # Fichier de config dynamique (middleware)
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
     ports:
       - "80:80"
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+    restart: unless-stopped
+    depends_on:
+      - crowdsec
+
+  # CROWDSEC — moteur de détection
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    environment:
+      COLLECTIONS: "crowdsecurity/traefik"   # règles pour logs
+      DOCKER_API_VERSION: "1.42" 
+      GID: "1000"
+    volumes:
+      - ./crowdsec/acquis.yml:/etc/crowdsec/acquis.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - crowdsec_db:/var/lib/crowdsec/data
+      - crowdsec_config:/etc/crowdsec
     restart: unless-stopped
 
+  # FLASK
   flask:
-    image: python:3.12-slim
+    image: python:3.13-slim
     working_dir: /app
     volumes:
       - ./app:/app
@@ -30,5 +54,10 @@ services:
       - "traefik.http.routers.flask.rule=Host(`localhost`)"
       - "traefik.http.routers.flask.entrypoints=web"
       - "traefik.http.services.flask.loadbalancer.server.port=5000"
-      - "traefik.http.middlewares.flask-headers.headers.customrequestheaders.X-Forwarded-For=true"
+      # Appply middleware
+      - "traefik.http.routers.flask.middlewares=crowdsec-bouncer@file"
     restart: unless-stopped
+
+volumes:
+  crowdsec_db:
+  crowdsec_config:
