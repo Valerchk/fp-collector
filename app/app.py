@@ -20,10 +20,11 @@ logging.basicConfig(
     format="[%(asctime)s] %(levelname)s %(name)s — %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger("gottaphish")
+logger = logging.getLogger("fp-collector")
 
 app = Flask(__name__)
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "visitors.db")
+API_TOKEN = os.environ.get("API_TOKEN", "changeme")
 
 BOT_UA_PATTERNS = [
     r"googlebot", r"google-safety", r"safebrowsing", r"google-read-aloud",
@@ -208,7 +209,16 @@ def detect_bot_full(row: dict) -> tuple[bool, str]:
 # Routes
 # ---------------------------------------------------------------------------
 
-BASE = "/gottaphish/part2/login"
+BASE = "/fp-collector/login"
+
+
+def get_client_ip():
+    """Extract the real client IP from X-Forwarded-For header.
+    X-Forwarded-For can be a chain: 'client, proxy1, proxy2' — we take the first."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr
 
 
 BLOCKED_HTML = """<!DOCTYPE html>
@@ -221,7 +231,7 @@ justify-content:center;min-height:100vh;background:#f5f5f4">
 
 @app.route(f"{BASE}/")
 def index():
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    ip = get_client_ip()
     ua = request.headers.get("User-Agent", "")
     accept_lang = request.headers.get("Accept-Language", "")
     tls_cipher = request.environ.get("SSL_CIPHER", "")
@@ -339,8 +349,20 @@ def collect():
     return jsonify({"status": "ok", "is_bot": False})
 
 
+def check_token():
+    """Verify Bearer token from Authorization header."""
+    auth = request.headers.get("Authorization", "")
+    token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else ""
+    if token != API_TOKEN:
+        logger.warning("[AUTH] Unauthorized access to %s from %s", request.path, get_client_ip())
+        return False
+    return True
+
+
 @app.route(f"{BASE}/api/stats")
 def stats():
+    if not check_token():
+        return jsonify({"error": "unauthorized — send Authorization: Bearer <token>"}), 401
     db = get_db()
     def count(where=""):
         q = "SELECT COUNT(*) FROM visitors" + (f" WHERE {where}" if where else "")
@@ -359,6 +381,8 @@ def stats():
 
 @app.route(f"{BASE}/api/export")
 def export_csv():
+    if not check_token():
+        return jsonify({"error": "unauthorized — send Authorization: Bearer <token>"}), 401
     db = get_db()
     rows = db.execute("SELECT * FROM visitors ORDER BY id DESC").fetchall()
     path = os.path.join(os.path.dirname(__file__), "data", "export.csv")

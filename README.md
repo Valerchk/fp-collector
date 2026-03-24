@@ -1,4 +1,4 @@
-# Gottaphish — Bot Detection & Fingerprint Collector
+# fp-collector — Bot Detection & Fingerprint Collector
 
 A phishing awareness tool that collects browser fingerprints and detects bots using reliable, hard-to-fake indicators. Detected bots are **blocked (HTTP 403)** and logged.
 
@@ -12,10 +12,10 @@ Traefik (reverse proxy) + CrowdSec (security engine)
     │
     ▼
 Flask App (Python 3.13)
-    ├── GET  /gottaphish/part2/login/             → Login page + JS fingerprinting
-    ├── POST /gottaphish/part2/login/api/collect  → Receives fingerprint, detects bot
-    ├── GET  /gottaphish/part2/login/api/stats    → JSON statistics
-    └── GET  /gottaphish/part2/login/api/export   → CSV export
+    ├── GET  /fp-collector/login/             → Login page + JS fingerprinting
+    ├── POST /fp-collector/login/api/collect  → Receives fingerprint, detects bot
+    ├── GET  /fp-collector/login/api/stats    → JSON statistics
+    └── GET  /fp-collector/login/api/export   → CSV export
     │
     ▼
 SQLite (visitors.db)
@@ -52,19 +52,19 @@ Detection relies on **hard indicators that cannot be faked**. Behavioral signals
 docker compose up -d
 
 # Test — human (should return 200)
-curl -s -o /dev/null -w "%{http_code}" http://localhost/gottaphish/part2/login/
+curl -s -o /dev/null -w "%{http_code}" http://localhost/fp-collector/login/
 
 # Test — bot detection (should return 403)
-curl -s -o /dev/null -w "%{http_code}" -A "curl/test" http://localhost/gottaphish/part2/login/
+curl -s -o /dev/null -w "%{http_code}" -A "curl/test" http://localhost/fp-collector/login/
 
 # View logs (bot detections visible here)
 docker compose logs flask -f
 
-# Stats
-curl http://localhost/gottaphish/part2/login/api/stats
+# Stats (requires token)
+curl -H "Authorization: Bearer changeme" http://localhost/fp-collector/login/api/stats
 
-# Export CSV
-curl -O http://localhost/gottaphish/part2/login/api/export
+# Export CSV (requires token)
+curl -H "Authorization: Bearer changeme" http://localhost/fp-collector/login/api/export -o visitors.csv
 ```
 
 ## Deploy — Minikube (macOS)
@@ -78,7 +78,7 @@ curl -O http://localhost/gottaphish/part2/login/api/export
 ### Automated deployment
 
 ```bash
-cd gottaphish
+cd fp-collector
 bash k8s/deploy.sh
 ```
 
@@ -111,26 +111,26 @@ kubectl apply -f k8s/02-traefik.yaml
 kubectl apply -f k8s/03-flask.yaml
 
 # 4. Wait for pods
-kubectl get pods -n gottaphish -w
+kubectl get pods -n fp-collector -w
 
 # 5. Port-forward Traefik to localhost:8080
-kubectl port-forward -n gottaphish svc/traefik 8080:80
+kubectl port-forward -n fp-collector svc/traefik 8080:80
 
 # 6. Access the app (in another terminal)
-curl http://127.0.0.1:8080/gottaphish/part2/login/
+curl http://127.0.0.1:8080/fp-collector/login/
 ```
 
 ### Viewing logs
 
 ```bash
 # Flask logs — shows [BLOCKED] and [ALLOWED] for every request
-kubectl logs -n gottaphish -l app=flask -f
+kubectl logs -n fp-collector -l app=flask -f
 
 # Traefik access logs
-kubectl logs -n gottaphish -l app=traefik -f
+kubectl logs -n fp-collector -l app=traefik -f
 
 # CrowdSec logs
-kubectl logs -n gottaphish -l app=crowdsec -f
+kubectl logs -n fp-collector -l app=crowdsec -f
 ```
 
 ### Stopping
@@ -141,7 +141,7 @@ minikube stop
 
 ## Testing Bot Detection
 
-All examples below use Docker Compose (`localhost` port 80). For Minikube, replace `localhost` with `127.0.0.1:8080` (after `kubectl port-forward`).
+All examples below use Docker Compose (`localhost` port 80). For Minikube, replace `localhost` with `127.0.0.1:**8080**` (after `kubectl port-forward`).
 
 > **Tip:** Open a second terminal with logs **before** running tests so you can see detections in real time:
 > ```bash
@@ -149,7 +149,7 @@ All examples below use Docker Compose (`localhost` port 80). For Minikube, repla
 > docker compose logs flask -f
 >
 > # Minikube
-> kubectl logs -n gottaphish -l app=flask -f
+> kubectl logs -n fp-collector -l app=flask -f
 > ```
 
 ### Test 1 — curl (obvious bot User-Agent)
@@ -157,7 +157,7 @@ All examples below use Docker Compose (`localhost` port 80). For Minikube, repla
 curl sends its own UA (`curl/8.x`) which matches the `curl` pattern. Blocked at the GET level.
 
 ```bash
-curl -v http://localhost/gottaphish/part2/login/
+curl -v http://localhost/fp-collector/login/
 ```
 
 **Expected:** HTTP `403`, body contains "Access Denied".
@@ -172,7 +172,7 @@ Simulates a Google crawler by spoofing the UA string.
 
 ```bash
 curl -v -A "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" \
-  http://localhost/gottaphish/part2/login/
+  http://localhost/fp-collector/login/
 ```
 
 **Expected:** HTTP `403`.
@@ -184,7 +184,7 @@ curl -v -A "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.h
 ### Test 3 — Google Safe Browsing UA
 
 ```bash
-curl -v -A "Google-Safety" http://localhost/gottaphish/part2/login/
+curl -v -A "Google-Safety" http://localhost/fp-collector/login/
 ```
 
 **Expected:** HTTP `403`.
@@ -196,7 +196,7 @@ curl -v -A "Google-Safety" http://localhost/gottaphish/part2/login/
 ### Test 4 — Python bot
 
 ```bash
-curl -v -A "python-requests/2.31.0" http://localhost/gottaphish/part2/login/
+curl -v -A "python-requests/2.31.0" http://localhost/fp-collector/login/
 ```
 
 **Expected:** HTTP `403`.
@@ -208,12 +208,12 @@ Send a crafted POST to `/api/collect` simulating a headless browser with SwiftSh
 ```bash
 # First, get a visitor_id by requesting the page with a normal UA
 VISITOR_ID=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120" \
-  http://localhost/gottaphish/part2/login/ | grep -o 'VISITOR_ID *= *[0-9]*' | grep -o '[0-9]*')
+  http://localhost/fp-collector/login/ | grep -o 'VISITOR_ID *= *[0-9]*' | grep -o '[0-9]*')
 
 echo "visitor_id = $VISITOR_ID"
 
 # Then send a fingerprint payload with a virtual GPU
-curl -v -X POST http://localhost/gottaphish/part2/login/api/collect \
+curl -v -X POST http://localhost/fp-collector/login/api/collect \
   -H "Content-Type: application/json" \
   -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120" \
   -d "{
@@ -241,7 +241,7 @@ curl -v -X POST http://localhost/gottaphish/part2/login/api/collect \
 Same as above but with a very slow GPU benchmark (>5000ms = virtual machine):
 
 ```bash
-curl -v -X POST http://localhost/gottaphish/part2/login/api/collect \
+curl -v -X POST http://localhost/fp-collector/login/api/collect \
   -H "Content-Type: application/json" \
   -d "{
     \"visitor_id\": $VISITOR_ID,
@@ -262,7 +262,7 @@ curl -v -X POST http://localhost/gottaphish/part2/login/api/collect \
 Open in a real browser (Chrome, Firefox, Safari):
 
 ```
-http://localhost/gottaphish/part2/login/
+http://localhost/fp-collector/login/
 ```
 
 **Expected:** Login page loads normally (HTTP `200`). After 3 seconds, fingerprint is sent automatically. **Log output:**
@@ -274,7 +274,7 @@ http://localhost/gottaphish/part2/login/
 ### Test 8 — Check stats after all tests
 
 ```bash
-curl -s http://localhost/gottaphish/part2/login/api/stats | python3 -m json.tool
+curl -s http://localhost/fp-collector/login/api/stats | python3 -m json.tool
 ```
 
 **Expected output (example):**
@@ -294,11 +294,47 @@ curl -s http://localhost/gottaphish/part2/login/api/stats | python3 -m json.tool
 ### Test 9 — Export CSV and inspect
 
 ```bash
-curl -s http://localhost/gottaphish/part2/login/api/export -o visitors.csv
+curl -s http://localhost/fp-collector/login/api/export -o visitors.csv
 cat visitors.csv | column -t -s,
 ```
 
 Look at the `is_bot` and `bot_reason` columns to verify each detection.
+
+### Test 10 — ASN detection (datacenter IPs)
+
+Use `X-Forwarded-For` to simulate requests from known datacenter IPs. These should be blocked even with a normal browser UA...
+
+```bash
+# Google datacenter → 403
+curl -v -A "Mozilla/5.0 Chrome/120" -H "X-Forwarded-For: 8.8.8.8" \
+  http://localhost/fp-collector/login/
+
+# AWS datacenter → 403
+curl -v -A "Mozilla/5.0 Chrome/120" -H "X-Forwarded-For: 54.239.28.85" \
+  http://localhost/fp-collector/login/
+
+# Microsoft Azure → 403
+curl -v -A "Mozilla/5.0 Chrome/120" -H "X-Forwarded-For: 20.190.128.1" \
+  http://localhost/fp-collector/login/
+
+# OVH hosting → 403
+curl -v -A "Mozilla/5.0 Chrome/120" -H "X-Forwarded-For: 51.210.0.1" \
+  http://localhost/fp-collector/login/
+
+# French ISP (real user) → 200
+curl -v -A "Mozilla/5.0 Chrome/120" -H "X-Forwarded-For: 86.238.1.1" \
+  http://localhost/fp-collector/login/
+```
+
+**Expected:** Datacenter IPs → `403`. Residential ISP → `200`.
+**Log output:**
+```
+[BLOCKED] ip=8.8.8.8 reason=datacenter ASN: Google LLC (AS15169) asn=AS15169 org=Google LLC ...
+[BLOCKED] ip=54.239.28.85 reason=datacenter ASN: Amazon.com, Inc. (AS16509) asn=AS16509 org=Amazon.com, Inc. ...
+[ALLOWED] ip=86.238.1.1 asn=AS3215 org=Orange
+```
+
+> **Note:** `X-Forwarded-For` tests require Traefik to trust the header (`forwardedHeaders.insecure=true` in K8s config). In production, this header is set by the real reverse proxy from the client's actual IP.
 
 ### Summary table
 
@@ -310,6 +346,10 @@ Look at the `is_bot` and `bot_reason` columns to verify each detection.
 | python-requests | GET | UA matches `python-requests` | **403** |
 | SwiftShader GPU | POST | Virtual GPU renderer | **403** |
 | Slow GPU (VM) | POST | benchmark > 5000ms | **403** |
+| Google IP (ASN) | GET | datacenter ASN: Google LLC | **403** |
+| AWS IP (ASN) | GET | datacenter ASN: Amazon.com | **403** |
+| OVH IP (ASN) | GET | datacenter ASN: OVH SAS | **403** |
+| French ISP | GET | residential ISP (no match) | **200** |
 | Real browser | GET+POST | Nothing triggers | **200** |
 
 ---
@@ -325,7 +365,7 @@ MaxMind provides the most reliable datacenter/ASN detection. Without it, the app
 ## Project Structure
 
 ```
-gottaphish/
+fp-collector/
 ├── app/
 │   ├── app.py                ← Flask backend + bot blocking
 │   ├── bot_detection.py      ← Detection logic (reverse DNS, ASN, cloud IP)
@@ -348,3 +388,25 @@ gottaphish/
     └── deploy.sh             ← Automated Minikube deployment script
 ```
 
+## API Authentication
+
+The `/api/stats` and `/api/export` endpoints require a Bearer token. Set the token via the `API_TOKEN` environment variable (default: `changeme`).
+
+```bash
+# Stats
+curl -H "Authorization: Bearer changeme" http://localhost/fp-collector/login/api/stats
+
+# Export CSV
+curl -H "Authorization: Bearer changeme" http://localhost/fp-collector/login/api/export -o visitors.csv
+
+# Without token → 401 Unauthorized
+curl http://localhost/fp-collector/login/api/stats
+```
+
+For production, set a strong token:
+```bash
+# Docker Compose
+API_TOKEN=my-secret-token-here docker compose up -d
+
+# Minikube — edit k8s/03-flask.yaml, change API_TOKEN value
+```

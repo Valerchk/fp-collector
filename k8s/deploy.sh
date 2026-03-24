@@ -1,14 +1,14 @@
 set -e
 
 # Usage:
-#   cd gottaphish
+#   cd fp-collector
 #   bash k8s/deploy.sh          # deploy everything
 #   bash k8s/deploy.sh --clean  # delete namespace and redeploy
 # ─────────────────────────────────────────────────────────────────
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)/app"
-BASE_URL="/gottaphish/part2/login/"
-NAMESPACE="gottaphish"
+BASE_URL="/fp-collector/login/"
+NAMESPACE="fp-collector"
 LOCAL_PORT=8080
 
 RED='\033[0;31m'
@@ -126,7 +126,7 @@ fi
 
 echo ""
 echo "════════════════════════════════════════════════════════════"
-echo "  Gottaphish deployed successfully!"
+echo "  FP-Collector deployed successfully!"
 echo ""
 echo "  App:        $APP_URL"
 echo "  Stats:      ${APP_URL}api/stats"

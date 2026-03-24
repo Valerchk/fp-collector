@@ -47,6 +47,7 @@ services:
       - ./app:/app
     environment:
       - MAXMIND_ASN_DB=/app/data/GeoLite2-ASN.mmdb
+      - API_TOKEN=${API_TOKEN:-changeme}
     command: >
       bash -c "pip install -r requirements.txt -q &&
                python -c 'from app import init_db; init_db()' &&

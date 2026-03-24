@@ -3,6 +3,6 @@
 
 source: docker
 container_name:
-  - gottaphish-traefik-1   # name of the Traefik container
+  - fp-collector-traefik-1   # name of the Traefik container
 labels:
   type: traefik
