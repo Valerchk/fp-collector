@@ -1,4 +1,4 @@
-# fp-collector — Bot Detection & Fingerprint Collector
+# fp-collector - Bot Detection & Fingerprint Collector
 
 A phishing awareness tool that collects browser fingerprints and detects bots using reliable, hard-to-fake indicators. Detected bots are **blocked (HTTP 403)** and logged.
 
@@ -23,7 +23,7 @@ SQLite (visitors.db)
 
 ## Bot Detection Strategy
 
-Detection relies on **hard indicators that cannot be faked**. Behavioral signals (mouse, scroll, keyboard) are collected for analysis but **do not trigger blocking** — they produce too many false positives.
+Detection relies on **hard indicators that cannot be faked**. Behavioral signals (mouse, scroll, keyboard) are collected for analysis but **do not trigger blocking** - they produce too many false positives.
 
 ### Hard indicators (→ block + log)
 
@@ -141,7 +141,7 @@ minikube stop
 
 ## Testing Bot Detection
 
-All examples below use Docker Compose (`localhost` port 80). For Minikube, replace `localhost` with `127.0.0.1:**8080**` (after `kubectl port-forward`).
+All examples below use Docker Compose (`localhost` port 80). For Minikube, replace `localhost` with **`127.0.0.1:8080`** (after `kubectl port-forward`).
 
 > **Tip:** Open a second terminal with logs **before** running tests so you can see detections in real time:
 > ```bash
@@ -336,57 +336,15 @@ curl -v -A "Mozilla/5.0 Chrome/120" -H "X-Forwarded-For: 86.238.1.1" \
 
 > **Note:** `X-Forwarded-For` tests require Traefik to trust the header (`forwardedHeaders.insecure=true` in K8s config). In production, this header is set by the real reverse proxy from the client's actual IP.
 
-### Summary table
-
-| Test | Method | What triggers detection | Expected HTTP |
-|------|--------|------------------------|---------------|
-| curl default | GET | UA matches `curl` | **403** |
-| Googlebot UA | GET | UA matches `googlebot` | **403** |
-| Google-Safety | GET | UA matches `google-safety` | **403** |
-| python-requests | GET | UA matches `python-requests` | **403** |
-| SwiftShader GPU | POST | Virtual GPU renderer | **403** |
-| Slow GPU (VM) | POST | benchmark > 5000ms | **403** |
-| Google IP (ASN) | GET | datacenter ASN: Google LLC | **403** |
-| AWS IP (ASN) | GET | datacenter ASN: Amazon.com | **403** |
-| OVH IP (ASN) | GET | datacenter ASN: OVH SAS | **403** |
-| French ISP | GET | residential ISP (no match) | **200** |
-| Real browser | GET+POST | Nothing triggers | **200** |
-
 ---
 
 ## MaxMind GeoLite2-ASN 
 
 MaxMind provides the most reliable datacenter/ASN detection. Without it, the app falls back to cloud IP range matching (less accurate).
 
-1. Thanks to this repo https://github.com/P3TERX/GeoLite.mmdb?tab=readme-ov-file you can download the GeoLite.mmdb file, once it;s done
+1. Thanks to this repo https://github.com/P3TERX/GeoLite.mmdb?tab=readme-ov-file you can download the GeoLite.mmdb file, once it's done:
 2. Place it in `app/data/GeoLite2-ASN.mmdb`
 3. Restart the app
-
-## Project Structure
-
-```
-fp-collector/
-├── app/
-│   ├── app.py                ← Flask backend + bot blocking
-│   ├── bot_detection.py      ← Detection logic (reverse DNS, ASN, cloud IP)
-│   ├── requirements.txt      ← flask, geoip2
-│   ├── data/
-│   │   ├── visitors.db       ← SQLite database (auto-created)
-│   │   └── GeoLite2-ASN.mmdb ← MaxMind DB (manual download)
-│   └── templates/
-│       └── index.html        ← Login page + JS fingerprinting
-├── docker-compose.yml        ← Docker Compose (Traefik + CrowdSec + Flask)
-├── traefik/
-│   └── dynamic.yml           ← CrowdSec bouncer middleware config
-├── crowdsec/
-│   └── acquis.yml            ← CrowdSec log acquisition config
-└── k8s/
-    ├── 00-namespace.yaml     ← Kubernetes namespace
-    ├── 01-crowdsec.yaml      ← CrowdSec deployment + service
-    ├── 02-traefik.yaml       ← Traefik deployment + RBAC + LoadBalancer
-    ├── 03-flask.yaml         ← Flask deployment + service + ingress
-    └── deploy.sh             ← Automated Minikube deployment script
-```
 
 ## API Authentication
 
