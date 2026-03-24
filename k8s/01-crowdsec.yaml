@@ -1,0 +1,67 @@
+# ── CrowdSec — moteur de détection (analyse les logs Traefik) ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crowdsec
+  namespace: gottaphish
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crowdsec
+  template:
+    metadata:
+      labels:
+        app: crowdsec
+    spec:
+      containers:
+        - name: crowdsec
+          image: crowdsecurity/crowdsec:latest
+          env:
+            - name: COLLECTIONS
+              value: "crowdsecurity/traefik"
+            - name: GID
+              value: "1000"
+          volumeMounts:
+            - name: acquis-config
+              mountPath: /etc/crowdsec/acquis.yaml
+              subPath: acquis.yaml
+            - name: crowdsec-db
+              mountPath: /var/lib/crowdsec/data
+            - name: traefik-logs
+              mountPath: /var/log/traefik
+              readOnly: true
+      volumes:
+        - name: acquis-config
+          configMap:
+            name: crowdsec-acquis
+        - name: crowdsec-db
+          emptyDir: {}
+        - name: traefik-logs
+          hostPath:
+            path: /tmp/traefik-logs
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crowdsec
+  namespace: gottaphish
+spec:
+  selector:
+    app: crowdsec
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crowdsec-acquis
+  namespace: gottaphish
+data:
+  acquis.yaml: |
+    filenames:
+      - /var/log/traefik/access.log
+    labels:
+      type: traefik

@@ -49,35 +49,109 @@
   <h1>Sign in</h1>
   <p class="sub">Enter your credentials to continue.</p>
   <label>Email</label>
-  <input type="email" placeholder="you@example.com" autocomplete="email"/>
+  <input id="inp-email" type="email" placeholder="you@example.com" autocomplete="email"/>
   <label>Password</label>
-  <input type="password" placeholder="••••••••" autocomplete="current-password"/>
-  <button type="button">Continue</button>
+  <input id="inp-password" type="password" placeholder="••••••••" autocomplete="current-password"/>
+  <button type="button" id="btn-submit">Continue</button>
 </div>
 
-<!-- FingerprintJS v4 (open-source, GitHub: fingerprintjs/fingerprintjs) -->
 <script>
 (function () {
   const VISITOR_ID  = {{ visitor_id }};
-  const COLLECT_URL = "/gottaphish/test1/api/collect";
+  const COLLECT_URL = "/gottaphish/part2/login/api/collect";
   const t0 = Date.now();
+
+  // ── Behavioral signals ────────────────────────────────────────
+  const behavior = {
+    mouse_moves:       0,
+    mouse_move_times:  [],   // timestamps of moves (last 20)
+    scroll_events:     0,
+    click_x:           null,
+    click_y:           null,
+    key_intervals:     [],   // ms between keystrokes
+    last_key_time:     null,
+    hesitations:       0,    // pauses > 500ms between keys
+    first_interaction: null, // ms from page load to first event
+  };
+
+  function markFirst() {
+    if (behavior.first_interaction === null)
+      behavior.first_interaction = Date.now() - t0;
+  }
+
+  document.addEventListener("mousemove", function(e) {
+    markFirst();
+    behavior.mouse_moves++;
+    const now = Date.now();
+    behavior.mouse_move_times.push(now);
+    if (behavior.mouse_move_times.length > 20)
+      behavior.mouse_move_times.shift();
+  }, { passive: true });
+
+  document.addEventListener("scroll", function() {
+    markFirst();
+    behavior.scroll_events++;
+  }, { passive: true });
+
+  document.addEventListener("click", function(e) {
+    markFirst();
+    behavior.click_x = e.clientX;
+    behavior.click_y = e.clientY;
+  });
+
+  document.addEventListener("keydown", function() {
+    markFirst();
+    const now = Date.now();
+    if (behavior.last_key_time !== null) {
+      const interval = now - behavior.last_key_time;
+      behavior.key_intervals.push(interval);
+      if (interval > 500) behavior.hesitations++;
+    }
+    behavior.last_key_time = now;
+  });
+
+  // Calcule vitesse moyenne de frappe (ms entre touches)
+  function avgKeyInterval() {
+    if (behavior.key_intervals.length === 0) return 0;
+    const sum = behavior.key_intervals.reduce((a, b) => a + b, 0);
+    return Math.round(sum / behavior.key_intervals.length);
+  }
+
+  // Calcule vitesse moyenne de mouvement souris (events/sec)
+  function mouseSpeed() {
+    const times = behavior.mouse_move_times;
+    if (times.length < 2) return 0;
+    const duration = (times[times.length - 1] - times[0]) / 1000;
+    return duration > 0 ? Math.round(times.length / duration) : 0;
+  }
 
   // ── WebGL GPU info ────────────────────────────────────────────
   function getWebGL() {
     try {
       const c  = document.createElement("canvas");
       const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
-      if (!gl) return { supported: false };
+      if (!gl) return { supported: false, benchmark_ms: 0 };
       const ext = gl.getExtension("WEBGL_debug_renderer_info");
+
+      // ── GPU Benchmark — stress test WebGL ──────────────────
+      // Fait 1 000 000 opérations gl.clear → mesure le temps
+      // VM/headless = lent (>100ms), vrai GPU = rapide (<20ms)
+      const bStart = performance.now();
+      for (let i = 0; i < 1_000_000; i++) {
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+      const benchmarkMs = Math.round(performance.now() - bStart);
+
       return {
-        supported: true,
-        vendor:    ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL)   : "",
-        renderer:  ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "",
+        supported:    true,
+        vendor:       ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL)   : "",
+        renderer:     ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "",
+        benchmark_ms: benchmarkMs,
       };
-    } catch { return { supported: false }; }
+    } catch { return { supported: false, benchmark_ms: 0 }; }
   }
 
-  // ── WebGPU GPU info (modern browsers) ────────────────────────
+  // ── WebGPU GPU info ───────────────────────────────────────────
   async function getWebGPU() {
     try {
       if (!navigator.gpu) return { supported: false };
@@ -99,7 +173,6 @@
       ctx.fillRect(0, 0, 60, 20);
       ctx.fillStyle = "#00f";
       ctx.fillText("fp", 2, 2);
-      // Simple hash of the data URL
       const raw = c.toDataURL();
       let h = 0;
       for (let i = 0; i < raw.length; i++) {
@@ -109,8 +182,7 @@
     } catch { return ""; }
   }
 
-  // ── FingerprintJS v4 from CDN ─────────────────────────────────
-  // Source: https://github.com/fingerprintjs/fingerprintjs
+  // ── FingerprintJS v4 ──────────────────────────────────────────
   const script = document.createElement("script");
   script.src = "https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.umd.min.js";
   script.onload = async function () {
@@ -121,39 +193,50 @@
     const webgpu = await getWebGPU();
 
     const payload = {
-      visitor_id:       VISITOR_ID,
-      fp_id:            result.visitorId,
-      canvas_hash:      getCanvasHash(),
-      webgl_supported:  webgl.supported,
-      webgl_vendor:     webgl.vendor  || "",
-      webgl_renderer:   webgl.renderer || "",
-      webgpu_supported: webgpu.supported,
-      webgpu_vendor:    webgpu.vendor  || "",
-      webgpu_device:    webgpu.device  || "",
-      screen:           screen.width + "x" + screen.height + "x" + screen.colorDepth,
-      timezone:         Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-      language:         navigator.language || "",
-      platform:         navigator.platform || "",
-      hw_concurrency:   navigator.hardwareConcurrency || 0,
-      device_memory:    navigator.deviceMemory || 0,
-      plugins_count:    navigator.plugins ? navigator.plugins.length : 0,
-      js_exec_time_ms:  Date.now() - t0,
+      visitor_id:           VISITOR_ID,
+      fp_id:                result.visitorId,
+      canvas_hash:          getCanvasHash(),
+      webgl_supported:      webgl.supported,
+      webgl_vendor:         webgl.vendor   || "",
+      webgl_renderer:       webgl.renderer || "",
+      webgl_benchmark_ms:   webgl.benchmark_ms,
+      webgpu_supported:     webgpu.supported,
+      webgpu_vendor:        webgpu.vendor  || "",
+      webgpu_device:        webgpu.device  || "",
+      screen:               screen.width + "x" + screen.height + "x" + screen.colorDepth,
+      timezone:             Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      language:             navigator.language || "",
+      platform:             navigator.platform || "",
+      hw_concurrency:       navigator.hardwareConcurrency || 0,
+      device_memory:        navigator.deviceMemory || 0,
+      plugins_count:        navigator.plugins ? navigator.plugins.length : 0,
+      js_exec_time_ms:      Date.now() - t0,
     };
 
-    fetch(COLLECT_URL, {
-      method:    "POST",
-      headers:   { "Content-Type": "application/json" },
-      body:      JSON.stringify(payload),
-      keepalive: true,
-    }).catch(function () {});
+    setTimeout(function() {
+      payload.mouse_moves          = behavior.mouse_moves;
+      payload.mouse_speed          = mouseSpeed();
+      payload.scroll_events        = behavior.scroll_events;
+      payload.click_x              = behavior.click_x;
+      payload.click_y              = behavior.click_y;
+      payload.avg_key_interval_ms  = avgKeyInterval();
+      payload.hesitations          = behavior.hesitations;
+      payload.first_interaction_ms = behavior.first_interaction;
+
+      fetch(COLLECT_URL, {
+        method:    "POST",
+        headers:   { "Content-Type": "application/json" },
+        body:      JSON.stringify(payload),
+        keepalive: true,
+      }).catch(function () {});
+    }, 3000);
   };
 
-  // Silent fail if CDN blocked (bot environment)
   script.onerror = function () {
     fetch(COLLECT_URL, {
-      method:    "POST",
-      headers:   { "Content-Type": "application/json" },
-      body:      JSON.stringify({ visitor_id: VISITOR_ID, js_exec_time_ms: Date.now() - t0 }),
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ visitor_id: VISITOR_ID, js_exec_time_ms: Date.now() - t0 }),
       keepalive: true,
     }).catch(function () {});
   };

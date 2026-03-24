@@ -1,0 +1,77 @@
+# ── Deployment Flask ─────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask
+  namespace: gottaphish
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flask
+  template:
+    metadata:
+      labels:
+        app: flask
+    spec:
+      initContainers:
+        - name: pip-install
+          image: python:3.13-slim
+          command: ["pip", "install", "-r", "/app/requirements.txt", "--target", "/app/deps"]
+          volumeMounts:
+            - name: app-code
+              mountPath: /app
+      containers:
+        - name: flask
+          image: python:3.13-slim
+          command: ["python", "app.py"]
+          workingDir: /app
+          env:
+            - name: PYTHONPATH
+              value: "/app/deps"
+            - name: MAXMIND_ASN_DB
+              value: "/app/data/GeoLite2-ASN.mmdb"
+            - name: PORT
+              value: "5000"
+          ports:
+            - containerPort: 5000
+          volumeMounts:
+            - name: app-code
+              mountPath: /app
+      volumes:
+        - name: app-code
+          hostPath:
+            path: /app
+            type: Directory
+---
+# ── Service Flask ────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask
+  namespace: gottaphish
+spec:
+  selector:
+    app: flask
+  ports:
+    - port: 5000
+      targetPort: 5000
+---
+# ── Ingress — Flask via Traefik ──────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flask-ingress
+  namespace: gottaphish
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /gottaphish/part2/login
+            pathType: Prefix
+            backend:
+              service:
+                name: flask
+                port:
+                  number: 5000

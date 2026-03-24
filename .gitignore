@@ -6,3 +6,5 @@ __pycache__/
 .env
 
 infra.png
+
+app/deps/

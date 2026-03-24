@@ -6,4 +6,4 @@ http:
           enabled: true          
           crowdsecLapiHost: crowdsec:8080
           crowdsecMode: live
-          crowdsecLapiKey: # à générer avec docker compose exec crowdsec cscli bouncers add traefik-bouncer
+          crowdsecLapiKey: # à générer avec docker compose exec crowdsec cscli bouncers add traefik-bouncer ou kubectl ...
