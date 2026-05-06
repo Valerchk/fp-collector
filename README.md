@@ -8,18 +8,23 @@ A phishing awareness tool that collects browser fingerprints and detects bots us
 User / Bot
     │
     ▼
-Traefik (reverse proxy) + CrowdSec (security engine)
+Traefik (reverse proxy) + CrowdSec bouncer (blocks known bad IPs)
     │
-    ▼
-Flask App (Python 3.13)
-    ├── GET  /fp-collector/login/             → Login page + JS fingerprinting
-    ├── POST /fp-collector/login/api/collect  → Receives fingerprint, detects bot
-    ├── GET  /fp-collector/login/api/stats    → JSON statistics
-    └── GET  /fp-collector/login/api/export   → CSV export
+    ├── /fp-collector/login/*  ──► Flask App (Python 3.13)
+    │                                  ├── GET  /             → Login page + JS fingerprinting
+    │                                  ├── POST /api/collect  → Fingerprint verdict (bot/human)
+    │                                  ├── GET  /api/stats    → JSON statistics (token required)
+    │                                  └── GET  /api/export   → CSV export (token required)
+    │                                          │
+    │                                          ▼
+    │                                    SQLite (visitors.db)
     │
-    ▼
-SQLite (visitors.db)
+    └── /*  (all other paths)  ──► Nginx (hello world — default backend)
 ```
+
+Two detection layers:
+- **CrowdSec** (network level) — blocks IPs with known bad reputation before hitting the app
+- **Flask** (application level) — detects unknown bots via JS fingerprinting, ASN, reverse DNS, GPU benchmark
 
 ## Bot Detection Strategy
 
@@ -367,4 +372,96 @@ For production, set a strong token:
 API_TOKEN=my-secret-token-here docker compose up -d
 
 # Minikube — edit k8s/03-flask.yaml, change API_TOKEN value
+```
+
+---
+
+## Prod Deployment (Kubernetes cluster)
+
+> The `k8s/` directory is for local Minikube testing only (uses `hostPath` mounts and `minikube mount`).
+> For a real cluster, use `deploy/prod/` — it uses proper PVCs, a real Docker image, nginx as default backend, and CrowdSec fully wired.
+
+### What's different from Minikube
+
+| | Minikube (`k8s/`) | Production (`deploy/prod/`) |
+|---|---|---|
+| Flask image | `python:3.13-slim` + `pip install` at runtime | Built Docker image pushed to your registry |
+| Storage | `hostPath` (node filesystem) | PersistentVolumeClaims |
+| CrowdSec bouncer | Defined but not connected | Fully wired — blocks known bad IPs at Traefik level |
+| Traefik logs shared | `hostPath /tmp/traefik-logs` | Shared PVC between Traefik and CrowdSec |
+| Default backend | None | Nginx hello world — catches all routes outside `/fp-collector/login` |
+
+### Prerequisites
+
+- `kubectl` configured against your cluster
+- Docker + access to a registry (Docker Hub, ECR, GCR, etc.)
+- `GeoLite2-ASN.mmdb` placed in `app/data/` (see [MaxMind section](#maxmind-geolite2-asn))
+
+### One-time setup — edit before first deploy
+
+**1. Set your image registry in the deploy script:**
+```bash
+# deploy/prod/deploy.sh — top of file
+REGISTRY="docker.io/yourname"   # or ghcr.io/yourname, etc.
+```
+
+**2. Set your API token in `deploy/prod/04-secrets.yaml`:**
+```yaml
+stringData:
+  api_token: "your-strong-token-here"
+```
+
+**3. Replace the image placeholder in `deploy/prod/03-flask.yaml`:**
+```yaml
+image: REGISTRY/fp-collector:latest   # replace with your actual image
+```
+
+### Deploy
+
+```bash
+cd fp-collector
+REGISTRY=docker.io/yourname bash deploy/prod/deploy.sh
+```
+
+The script will:
+1. Build and push the Docker image
+2. Apply all Kubernetes manifests (namespace, PVCs, CrowdSec, Traefik, Flask, Nginx)
+3. Wait for all pods to be ready (crowdsec, traefik, flask, nginx)
+4. Generate the CrowdSec bouncer API key and inject it into Traefik
+5. Copy the MaxMind DB into the Flask pod (if found locally)
+
+### After deploy
+
+```bash
+# Get the external IP assigned to Traefik
+kubectl get svc traefik -n fp-collector
+
+# Watch Flask logs in real time
+kubectl logs -n fp-collector -l app=flask -f
+
+# Watch CrowdSec detections
+kubectl logs -n fp-collector -l app=crowdsec -f
+
+# Watch Nginx (default backend)
+kubectl logs -n fp-collector -l app=nginx -f
+
+# Check CrowdSec decisions (banned IPs)
+kubectl exec -n fp-collector deploy/crowdsec -- cscli decisions list
+```
+
+### Activate CrowdSec bouncer (if auto-generation failed)
+
+```bash
+# Generate key
+kubectl exec -n fp-collector deploy/crowdsec -- cscli bouncers add traefik-bouncer
+
+# Paste the key into deploy/prod/04-secrets.yaml, then:
+kubectl apply -f deploy/prod/04-secrets.yaml
+
+# Patch the traefik-dynamic ConfigMap with the key
+kubectl edit configmap traefik-dynamic -n fp-collector
+# Replace __CROWDSEC_KEY__ with the generated key
+
+# Restart Traefik to apply
+kubectl rollout restart deployment/traefik -n fp-collector
 ```

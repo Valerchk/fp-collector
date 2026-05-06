@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>fp-collector — Architecture</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #f0f2f5;
+  padding: 36px 24px 60px;
+  min-width: 900px;
+  color: #1e293b;
+}
+
+h1 {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+.subtitle {
+  text-align: center;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 32px;
+}
+
+/* ─── WHY BOX ─── */
+.why-box {
+  max-width: 980px;
+  margin: 0 auto 32px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 24px;
+}
+.why-box h2 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: #64748b;
+  margin-bottom: 14px;
+}
+.why-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.why-card {
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+.why-card .why-title {
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.why-card.orange { background: #fff7ed; border-left: 3px solid #f97316; }
+.why-card.orange .why-title { color: #c2410c; }
+.why-card.green  { background: #f0fdf4; border-left: 3px solid #22c55e; }
+.why-card.green  .why-title { color: #15803d; }
+
+/* ─── MAIN FLOW ─── */
+.flow-wrap {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+/* Layer label */
+.layer-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+/* Row with boxes */
+.row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 0;
+}
+
+/* Arrow between boxes */
+.arr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  flex-shrink: 0;
+}
+.arr-line {
+  width: 28px;
+  height: 2px;
+  background: #94a3b8;
+}
+.arr-head {
+  width: 0; height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid #94a3b8;
+}
+.arr-label {
+  font-size: 9.5px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+.arr.green .arr-line, .arr.green .arr-head { background: #22c55e; border-left-color: #22c55e; }
+.arr.green .arr-label { color: #16a34a; }
+.arr.red .arr-line, .arr.red .arr-head { background: #ef4444; border-left-color: #ef4444; }
+.arr.red .arr-label { color: #dc2626; }
+.arr.gray .arr-line { background: #cbd5e1; }
+.arr.gray .arr-head { border-left-color: #cbd5e1; }
+.arr.gray .arr-label { color: #94a3b8; }
+
+/* Down arrow */
+.down {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+}
+.down .d-line {
+  width: 2px;
+  height: 20px;
+  background: #94a3b8;
+}
+.down .d-head {
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid #94a3b8;
+}
+.down .d-label {
+  font-size: 9.5px;
+  color: #94a3b8;
+  margin-bottom: 3px;
+  text-align: center;
+}
+
+/* Box styles */
+.box {
+  border-radius: 10px;
+  padding: 14px 16px;
+  flex: 1;
+  min-width: 0;
+}
+.box-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 8px;
+}
+.box-body {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #334155;
+}
+.box-body code {
+  background: rgba(0,0,0,.07);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10.5px;
+  font-family: 'Courier New', monospace;
+}
+.box-body ul { padding-left: 16px; }
+.box-body li { margin-bottom: 1px; }
+
+.b-blue   { background: #dbeafe; border: 2px solid #3b82f6; }
+.b-blue   .box-title { color: #1d4ed8; }
+.b-green  { background: #dcfce7; border: 2px solid #22c55e; }
+.b-green  .box-title { color: #15803d; }
+.b-orange { background: #ffedd5; border: 2px solid #f97316; }
+.b-orange .box-title { color: #c2410c; }
+.b-purple { background: #ede9fe; border: 2px solid #8b5cf6; }
+.b-purple .box-title { color: #6d28d9; }
+.b-gray   { background: #f1f5f9; border: 2px solid #94a3b8; }
+.b-gray   .box-title { color: #475569; }
+.b-slate  { background: #fff; border: 2px solid #cbd5e1; }
+.b-slate  .box-title { color: #475569; }
+
+/* Sub-phase inside a box */
+.phase {
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.75;
+}
+.phase .ph-title {
+  font-weight: 700;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom: 4px;
+}
+.ph-blue   { background: #eff6ff; border-left: 3px solid #3b82f6; }
+.ph-blue   .ph-title { color: #1d4ed8; }
+.ph-purple { background: #faf5ff; border-left: 3px solid #8b5cf6; }
+.ph-purple .ph-title { color: #6d28d9; }
+.ph-red    { background: #fef2f2; border-left: 3px solid #ef4444; }
+.ph-green  { background: #f0fdf4; border-left: 3px solid #22c55e; }
+.ph-green  .ph-title { color: #15803d; }
+
+.tag-bot   { color: #dc2626; font-weight: 600; }
+.tag-human { color: #16a34a; font-weight: 600; }
+
+/* Divider between layers */
+.layer-sep {
+  max-width: 980px;
+  margin: 16px auto;
+  border: none;
+  border-top: 1px dashed #cbd5e1;
+}
+
+/* Right-side storage column */
+.storage-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 160px;
+  max-width: 180px;
+}
+
+/* Note badge */
+.note {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  margin-top: 4px;
+}
+.note-blue   { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
+.note-orange { background: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }
+.note-gray   { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+
+/* ─── STEP FLOW ─── */
+.steps {
+  max-width: 980px;
+  margin: 24px auto 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px 22px;
+}
+.steps h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #334155;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.step:nth-child(odd) { background: #f8fafc; }
+.step-num {
+  background: #e2e8f0;
+  color: #475569;
+  font-weight: 700;
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.step-num.blue   { background: #dbeafe; color: #1d4ed8; }
+.step-num.orange { background: #ffedd5; color: #c2410c; }
+.step-num.green  { background: #dcfce7; color: #15803d; }
+.step-num.purple { background: #ede9fe; color: #6d28d9; }
+
+/* ─── LEGEND ─── */
+.legend {
+  max-width: 980px;
+  margin: 16px auto 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+.legend h2 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: #64748b;
+  width: 100%;
+  margin-bottom: 2px;
+}
+.leg-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #374151;
+}
+.leg-dot {
+  width: 12px; height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+</style>
+</head>
+<body>
+
+<h1>fp-collector — Architecture Overview</h1>
+<p class="subtitle">Two-layer bot detection system · Kubernetes deployment</p>
+
+<!-- ═══════════════════════════════
+     WHY TWO LAYERS?
+     ═══════════════════════════════ -->
+<div class="why-box">
+  <h2>Why two detection layers?</h2>
+  <div class="why-grid">
+    <div class="why-card orange">
+      <div class="why-title">Layer 1 — CrowdSec (network level)</div>
+      Blocks IP addresses with a <strong>known bad reputation</strong> before the request even reaches the app.
+      Works on crowd-sourced threat intelligence: if an IP attacked any server in the CrowdSec network, it gets flagged globally.
+      <br/><br/>
+      <em>Analogy: a bouncer at the door with a global blacklist.</em>
+    </div>
+    <div class="why-card green">
+      <div class="why-title">Layer 2 — Flask (application level)</div>
+      Detects <strong>new or unknown bots</strong> that have no prior reputation — by analysing how they behave: do they run JavaScript? Do they have a real GPU? What does their ASN say?
+      <br/><br/>
+      <em>Analogy: a test inside the venue that a real human passes but a bot fails.</em>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════
+     LAYER 1 — NETWORK
+     ═══════════════════════════════ -->
+<div class="flow-wrap">
+  <div class="layer-label">Layer 1 — Network &amp; Proxy (Traefik + CrowdSec)</div>
+  <div class="row" style="align-items:center;">
+
+    <!-- Actor -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;min-width:90px;flex-shrink:0;">
+      <svg width="44" height="52" viewBox="0 0 44 52">
+        <circle cx="22" cy="13" r="11" fill="#6b7280"/>
+        <path d="M2 48 Q2 30 22 30 Q42 30 42 48" fill="#6b7280"/>
+      </svg>
+      <span style="font-size:11.5px;font-weight:600;text-align:center;color:#374151;">Visitor<br/><span style="font-weight:400;color:#6b7280;font-size:10px;">human or bot</span></span>
+    </div>
+
+    <div class="arr">
+      <div class="arr-label">HTTP :80</div>
+      <div style="display:flex;align-items:center;">
+        <div class="arr-line" style="width:20px;"></div>
+        <div class="arr-head"></div>
+      </div>
+    </div>
+
+    <!-- Traefik -->
+    <div class="box b-blue" style="max-width:260px;">
+      <div class="box-title">Traefik v3 — Ingress Controller</div>
+      <div class="box-body">
+        <b>Entrypoint:</b> <code>web :80</code><br/>
+        <b>Route:</b> <code>/fp-collector/login/*</code><br/>
+        <b>Access log:</b> <code>/var/log/traefik/access.log</code><br/>
+        <br/>
+        <b>CrowdSec bouncer middleware</b><br/>
+        Ready to activate — needs:<br/>
+        · API key generated via <code>cscli</code><br/>
+        · Annotation added to Ingress
+        <br/>
+        <div class="note note-blue">Middleware defined in traefik/dynamic.yml</div>
+      </div>
+    </div>
+
+    <div class="arr" style="min-width:40px;">
+      <div class="arr-label">reads logs</div>
+      <div style="display:flex;align-items:center;">
+        <div class="arr-line" style="width:16px;background:#f97316;"></div>
+        <div class="arr-head" style="border-left-color:#f97316;"></div>
+      </div>
+    </div>
+
+    <!-- CrowdSec -->
+    <div class="box b-orange" style="max-width:270px;">
+      <div class="box-title">CrowdSec — Threat Intelligence Engine</div>
+      <div class="box-body">
+        <b>Source:</b> <code>/var/log/traefik/access.log</code><br/>
+        <b>Collection:</b> <code>crowdsecurity/traefik</code><br/>
+        Detects: brute-force, port scans,<br/>
+        40x/50x floods, credential stuffing<br/>
+        <br/>
+        <b>Decisions API:</b> <code>crowdsec:8080</code><br/>
+        Returns: "ban this IP" / "allow"<br/>
+        <br/>
+        <b>Crowd intelligence:</b> IPs flagged by<br/>
+        other servers worldwide are shared
+        <br/>
+        <div class="note note-orange">Bouncer activation: run cscli bouncers add</div>
+      </div>
+    </div>
+
+    <div class="arr">
+      <div class="arr-label">forwards to</div>
+      <div style="display:flex;align-items:center;">
+        <div class="arr-line" style="width:16px;"></div>
+        <div class="arr-head"></div>
+      </div>
+    </div>
+
+    <!-- Flask label placeholder -->
+    <div style="font-size:12px;color:#64748b;font-style:italic;min-width:80px;">→ Layer 2<br/>(Flask)</div>
+
+  </div>
+
+  <hr class="layer-sep"/>
+
+  <!-- ═══════════════════════════════
+       LAYER 2 — APPLICATION
+       ═══════════════════════════════ -->
+  <div class="layer-label" style="margin-top:0;">Layer 2 — Application (Flask + JS Fingerprinting)</div>
+
+  <div class="row" style="align-items:flex-start; gap:12px;">
+
+    <!-- Flask main box -->
+    <div class="box b-green" style="flex:2;">
+      <div class="box-title">Flask App — Python 3.13 · port 5000</div>
+      <div class="box-body">
+
+        <div class="phase ph-blue">
+          <div class="ph-title">Step A — GET /fp-collector/login/ · Early server-side detection</div>
+          Runs before any HTML is served. Checks the incoming IP:<br/>
+          <ul>
+            <li><b>Reverse DNS PTR</b> — verifies if IP belongs to a known bot (Googlebot, Bingbot…)</li>
+            <li><b>ASN lookup</b> via MaxMind GeoLite2-ASN — is the IP from a datacenter? (AWS, GCP, Azure, DO…)</li>
+            <li><b>Cloud IP ranges</b> — direct comparison against known cloud CIDR blocks</li>
+            <li><b>User-Agent patterns</b> — curl, python-requests, scrapy, headlesschrome…</li>
+          </ul>
+          <br/>
+          <span class="tag-bot">→ Bot detected: HTTP 403 — never sees the page</span><br/>
+          <span class="tag-human">→ Passes: render login page with JS fingerprint collector</span>
+        </div>
+
+        <div class="phase ph-purple">
+          <div class="ph-title">Step B — Browser runs JS fingerprint (index.html)</div>
+          JavaScript silently collects signals while the user sees a login form:<br/>
+          <ul>
+            <li><b>Hard signals</b> (used for blocking): WebGL renderer, GPU benchmark duration, <code>hw_concurrency</code>, JS execution time, canvas hash</li>
+            <li><b>Soft signals</b> (stored for analysis only): mouse moves, scroll events, keystroke timing, hesitations</li>
+          </ul>
+          All data is POSTed to <code>/api/collect</code>
+        </div>
+
+        <div class="phase ph-red">
+          <div class="ph-title">Step C — POST /api/collect · Hard signal verdict</div>
+          Flask checks hard signals only — things a bot cannot easily fake:<br/>
+          <ul>
+            <li>No WebGL / no GPU → headless browser</li>
+            <li>Virtual GPU string (swiftshader, llvmpipe, virtualbox…)</li>
+            <li>GPU benchmark &gt; 5000 ms → running in a VM</li>
+            <li>JS execution &lt; 5 ms → headless (no real rendering)</li>
+            <li><code>hw_concurrency = 0</code> → not a real machine</li>
+          </ul>
+          <span class="tag-bot">→ Bot: <code>{"is_bot": true, "status": "blocked"}</code> HTTP 403</span><br/>
+          <span class="tag-human">→ Human: <code>{"is_bot": false, "status": "ok"}</code> HTTP 200</span>
+        </div>
+
+        <div class="phase ph-green">
+          <div class="ph-title">Admin API — Bearer token required</div>
+          <code>GET /api/stats</code> — visit counts (total / bots / humans / datacenter IPs…)<br/>
+          <code>GET /api/export</code> — full CSV export of all visitor records
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Storage column -->
+    <div class="storage-col" style="padding-top:4px;">
+
+      <div class="down" style="align-items:flex-start;padding-left:0;">
+        <div class="d-label" style="font-size:10px;color:#94a3b8;">every visit</div>
+        <div class="d-line"></div>
+        <div class="d-head"></div>
+      </div>
+
+      <div class="box b-gray">
+        <div class="box-title">SQLite Database</div>
+        <div class="box-body">
+          <code>data/visitors.db</code><br/>
+          Stores per visit:<br/>
+          IP · UA · ASN · org<br/>
+          fingerprint data<br/>
+          <code>is_bot</code> flag<br/>
+          timestamp
+        </div>
+      </div>
+
+      <div class="box b-slate" style="margin-top:6px;">
+        <div class="box-title">MaxMind GeoLite2</div>
+        <div class="box-body">
+          <code>GeoLite2-ASN.mmdb</code><br/>
+          Local binary DB<br/>
+          IP → ASN number<br/>
+          IP → Org name<br/>
+          Used by <code>bot_detection.py</code>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════
+     STEP-BY-STEP FLOW
+     ═══════════════════════════════ -->
+<div class="steps">
+  <h2>Request flow — step by step</h2>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num blue">1</div>
+      <div><strong>Visitor</strong> (human or bot) sends a request to <code>Traefik :80</code></div>
+    </div>
+    <div class="step">
+      <div class="step-num orange">2</div>
+      <div><strong>CrowdSec bouncer</strong> (when activated) checks the IP against CrowdSec decisions — known bad IPs are blocked here at the network level, before Flask is involved</div>
+    </div>
+    <div class="step">
+      <div class="step-num blue">3</div>
+      <div><strong>Traefik</strong> routes the request to Flask at <code>:5000</code> and writes the access to <code>access.log</code></div>
+    </div>
+    <div class="step">
+      <div class="step-num green">4</div>
+      <div><strong>Flask early detection</strong> (GET handler) checks reverse DNS, ASN, cloud IP ranges, UA pattern — <span class="tag-bot">bot → HTTP 403</span> / <span class="tag-human">human → login page served</span></div>
+    </div>
+    <div class="step">
+      <div class="step-num purple">5</div>
+      <div><strong>Browser JS</strong> collects fingerprint silently: WebGL GPU info, benchmark timing, hardware concurrency, canvas hash, mouse/scroll behavior</div>
+    </div>
+    <div class="step">
+      <div class="step-num purple">6</div>
+      <div><strong>POST /api/collect</strong> — Flask evaluates hard signals. <span class="tag-bot">Bot → 403 + is_bot:true</span> / <span class="tag-human">Human → 200 + is_bot:false</span>. Result saved to SQLite.</div>
+    </div>
+    <div class="step">
+      <div class="step-num orange">7</div>
+      <div><strong>CrowdSec</strong> continuously reads Traefik access logs in the background — detects attack patterns and builds reputation decisions for future requests</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════
+     LEGEND
+     ═══════════════════════════════ -->
+<div class="legend">
+  <h2>Legend</h2>
+  <div class="leg-item"><div class="leg-dot" style="background:#3b82f6;"></div> Traefik — network routing layer</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#f97316;"></div> CrowdSec — threat intelligence &amp; reputation</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#22c55e;"></div> Flask — application-level bot detection</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#8b5cf6;"></div> Browser JS — fingerprint collection</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#94a3b8;"></div> Storage — SQLite + MaxMind DB</div>
+</div>
+
+</body>
+</html>

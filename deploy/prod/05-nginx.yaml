@@ -1,0 +1,95 @@
+# ── Nginx — default backend (hello world) ───────────────────────
+# Serves any request that does not match /fp-collector/login.
+# Makes the server look like a normal web host.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: fp-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: nginx-html
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+      volumes:
+        - name: nginx-html
+          configMap:
+            name: nginx-html
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-html
+  namespace: fp-collector
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8"/>
+      <title>Welcome</title>
+      <style>
+        body { font-family: system-ui, sans-serif; display: flex; align-items: center;
+               justify-content: center; height: 100vh; margin: 0; background: #f9fafb; }
+        .box { text-align: center; color: #374151; }
+        h1   { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+        p    { color: #6b7280; font-size: 1rem; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <h1>Hello World</h1>
+        <p>Service is running.</p>
+      </div>
+    </body>
+    </html>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: fp-collector
+spec:
+  selector:
+    app: nginx
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# ── Ingress — nginx catches everything except /fp-collector/login ─
+# Traefik routes by path specificity: longer prefix wins.
+# /fp-collector/login → Flask (defined in 03-flask.yaml)
+# /                   → Nginx (catch-all)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-ingress
+  namespace: fp-collector
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: "crowdsec-bouncer@file"
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx
+                port:
+                  number: 80

@@ -1,0 +1,132 @@
+# ── ConfigMap — Traefik dynamic config with CrowdSec bouncer ────
+# After running deploy.sh step 3 (key generation), the key is
+# injected from the crowdsec-bouncer-key Secret automatically.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-dynamic
+  namespace: fp-collector
+data:
+  dynamic.yml: |
+    http:
+      middlewares:
+        crowdsec-bouncer:
+          plugin:
+            bouncer:
+              enabled: true
+              crowdsecLapiHost: crowdsec:8080
+              crowdsecMode: live
+              crowdsecLapiKey: "__CROWDSEC_KEY__"
+---
+# ── IngressClass ─────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: traefik
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
+spec:
+  controller: traefik.io/ingress-controller
+---
+# ── RBAC ─────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik
+  namespace: fp-collector
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik
+rules:
+  - apiGroups: [""]
+    resources: [services, endpoints, secrets]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, ingressclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses/status]
+    verbs: [update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik
+subjects:
+  - kind: ServiceAccount
+    name: traefik
+    namespace: fp-collector
+---
+# ── Traefik Deployment ───────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik
+  namespace: fp-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik
+      containers:
+        - name: traefik
+          image: traefik:v3.0
+          args:
+            - "--api.insecure=true"
+            - "--providers.kubernetesingress=true"
+            - "--providers.file.filename=/etc/traefik/dynamic.yml"
+            - "--entrypoints.web.address=:80"
+            - "--entrypoints.web.forwardedHeaders.insecure=true"
+            - "--accesslog=true"
+            - "--accesslog.filepath=/var/log/traefik/access.log"
+            - "--experimental.plugins.bouncer.moduleName=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
+            - "--experimental.plugins.bouncer.version=v1.3.5"
+          ports:
+            - containerPort: 80
+            - containerPort: 8080
+          volumeMounts:
+            - name: traefik-dynamic
+              mountPath: /etc/traefik/dynamic.yml
+              subPath: dynamic.yml
+            - name: traefik-logs
+              mountPath: /var/log/traefik
+      volumes:
+        - name: traefik-dynamic
+          configMap:
+            name: traefik-dynamic
+        - name: traefik-logs
+          persistentVolumeClaim:
+            claimName: traefik-logs
+---
+# ── Traefik Service — use LoadBalancer or NodePort depending on your cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: fp-collector
+spec:
+  type: LoadBalancer
+  selector:
+    app: traefik
+  ports:
+    - name: web
+      port: 80
+      targetPort: 80
+    - name: dashboard
+      port: 8080
+      targetPort: 8080

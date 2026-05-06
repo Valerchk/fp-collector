@@ -1,0 +1,84 @@
+# ── PVC — Flask persistent data (SQLite + MaxMind DB) ───────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flask-data
+  namespace: fp-collector
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 512Mi
+---
+# ── Flask Deployment ─────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask
+  namespace: fp-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flask
+  template:
+    metadata:
+      labels:
+        app: flask
+    spec:
+      containers:
+        - name: flask
+          image: REGISTRY/fp-collector:latest   # replace with your image
+          env:
+            - name: PORT
+              value: "5000"
+            - name: MAXMIND_ASN_DB
+              value: "/app/data/GeoLite2-ASN.mmdb"
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: flask-secrets
+                  key: api_token
+          ports:
+            - containerPort: 5000
+          volumeMounts:
+            - name: flask-data
+              mountPath: /app/data
+      volumes:
+        - name: flask-data
+          persistentVolumeClaim:
+            claimName: flask-data
+---
+# ── Flask Service ────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask
+  namespace: fp-collector
+spec:
+  selector:
+    app: flask
+  ports:
+    - port: 5000
+      targetPort: 5000
+---
+# ── Ingress — with CrowdSec bouncer middleware applied ───────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flask-ingress
+  namespace: fp-collector
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: "crowdsec-bouncer@file"
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /fp-collector/login
+            pathType: Prefix
+            backend:
+              service:
+                name: flask
+                port:
+                  number: 5000
